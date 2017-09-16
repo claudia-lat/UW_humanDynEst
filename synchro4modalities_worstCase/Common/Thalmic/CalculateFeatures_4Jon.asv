@@ -1,0 +1,224 @@
+function [Feature, ClockWindowed] = CalculateFeatures_4Jon(Data, Clock, selectedFeature, WindowSize, WindowShift, Norm, Fs)  
+
+% % Ali-Akbar Samadani, March 15th, 2015
+% Data: input data, a gesture representation in terms of of 8 EMG channels 
+% Data is of size T x 8. 
+% Fs: sampling frequecy
+% WindowSize: for windowing purpose, default = 256
+% WindowShift: round(WindowSize/10)
+% selectedFeature: which feature do you want to compute from raw EMG
+% signals
+% Norm: what type of normalization to apply on Data. options are: median,
+% mean, max
+
+% Note: in each call for this function a single feature should be selected:
+% The selected feature is indicated by "selectedFeature" input as an integer, 0< selectedFeature < 14 
+
+
+%% define moving windows
+IndexWindow = [1:WindowShift:size(Data,1);(1:WindowShift:size(Data,1))+WindowSize];
+IndexWindow(:,IndexWindow(2,:) > size(Data,1)) = [];
+IndexWindow(:,end+1) = [IndexWindow(1,end)+WindowShift, size(Data,1)];
+
+ClockWindowed = Clock(IndexWindow(2, :), :);
+
+%%
+%normalize the signal (channel-specific normalization)
+if strcmp(Norm, 'Median')
+    Data = Data./repmat(median(Data),length(Data),1);
+elseif strcmp(Norm, 'Mean')
+    Data = Data./repmat(mean(Data),length(Data),1);
+elseif strcmp(Norm,'Max')
+    Data = Data./repmat(max(Data),length(Data),1);
+    
+%     %     Alternatively, normalize by max across channels
+%     Data = Data/ max(abs(Data(:)));
+end
+
+
+%% compute RMS curves
+RMS =  cell2mat(arrayfun(@(x) arrayfun(@(y) norm(Data(IndexWindow(1,x):...
+    IndexWindow(2,x),y))/sqrt(diff(IndexWindow(:,x))),1:size(Data,2)),...
+    1:length(IndexWindow),'uniformoutput',false)');
+
+% Signal = cell2mat(arrayfun(@(y) arrayfun(@(x) norm(Data(IndexWindow(1,x):...
+%     IndexWindow(2,x),y))/sqrt(diff(IndexWindow(:,x))),...
+%     1:length(IndexWindow))',1:size(Data,2),'uniformoutput',false));
+%%
+switch selectedFeature
+    
+    case 1 % Mean Absolute Value
+        Feature = sum(abs(RMS))/size(RMS,1);
+
+        %%
+    case 2 % InnerProduct (normalized by the length of the gesture)
+        Feature = cell2mat(arrayfun(@(y) cell2mat(arrayfun(@(z) dot(RMS(:,y),...
+            RMS(:,z))/size(RMS,1),setdiff(y:4,y),...
+            'uniformoutput', false)),1:size(Data,2),'uniformoutput',false));
+        
+        %%
+    case 3 % Variance 
+        Feature = var(RMS);       
+        
+        %%
+    case 4 % Waveform-Length
+        Feature = sum(abs(diff(RMS)))/size(RMS,1);
+
+        %%
+    case 5 % Slope sign changes (this feature should be computed for a smoothed signal e.g., RMS)
+        Slope = diff(RMS);
+        Feature = sum((Slope(2:end,:).*Slope(1:end-1,:))<0)/size(RMS,1);
+        
+        %%
+    case 6% Hurst Exponent = Log(Range/StD)/Log(n), where n is number of samples
+        Feature = log(range(RMS)./std(RMS))/log(size(RMS,1));
+        
+      
+        %%
+    case 7 % Hjorth Parameters (Activity, Mobility, and Complexity)
+        % ideally, computed for filtered signals
+        % Carmen Vidaurre et al. 2009 propose computing Hjorth paramters
+        % for different order of derivatives of the signals
+        % Format: stucture with 3 feilds 1) Activity, 2) Mobility, and 3)
+        % Complexity.
+        Mobility = sqrt(var(diff(RMS))./var(RMS));
+        Complexity = sqrt(var(diff(RMS,2))./var(diff(RMS)))./Mobility;
+    
+        % compute Hjorth components for the first derivative of the
+        % gesture
+        dRMS = diff(RMS);
+        dMobility = sqrt(var(diff(dRMS))./var(dRMS));
+        dComplexity = sqrt(var(diff(dRMS,2))./var(diff(dRMS)))./dMobility;
+        
+        Feature = [Mobility Complexity dMobility dComplexity]; % 10*log10(mean(cat(3,P{:}),3))
+        
+     
+        %%
+    case 8 % Descriptive statistics (Mean)
+        Feature = mean(RMS);
+
+        %%
+    case 9 % Descriptive statistics (Skewness)
+        
+        Feature = skewness(RMS);
+  
+        %%
+    case 10 % Descriptive statistics (Kurtosis)
+        
+        Feature = kurtosis(RMS);
+
+        %%
+    case 11 % Teager Energy Operator
+        NE = RMS(2:end-1,:).^2 - RMS(1:end-2,:).*RMS(3:end,:);
+        
+        % channel specific normalization (Channel's max) and then take the mean
+        %other types of normalization should be tested including unnormalized
+        %version
+        Feature = mean(NE);
+        
+%%       
+    case 12 % Entropy
+        Qlevel = 32; % you can decide what level of quanitzation to consider for producing histograms
+        xRMS = cell2mat(arrayfun(@(x) quantentr(RMS(:,x),Qlevel),1:size(RMS,2),'un',0));
+        % %         estimate pdf
+        pdfest = arrayfun(@(x) accumarray(xRMS(:,x)+1,1)/length(xRMS),1:size(xRMS,2),'un',0);
+        pdfest = cellfun(@(x) x/sum(x), pdfest,'un',0);
+        
+        Entropy = cellfun(@(x) -sum(x(x>0).*log(x(x>0))),pdfest); % Entropy
+        pdfest = cellfun(@(x) x + eps,pdfest,'un',0);
+        RelEntropy = cell2mat(arrayfun(@(x) ...
+            arrayfun(@(y) ...
+            sum(pdfest{x}.*log(pdfest{x}./...
+            pdfest{y})),setdiff(x:8,x)),...
+            1:length(pdfest),'un',0));
+        
+        
+        jointProb = arrayfun(@(x) arrayfun(@(y) ...
+            accumarray([xRMS(:,x) xRMS(:,y)]+1, 1)/length(RMS), setdiff(x:8,x), 'un',0),...
+            1:size(xRMS,2),'un',0);
+        jointProb = cellfun(@(x) cell2mat(arrayfun(@(y) x{y}(:),1:length(x),'un',0)),...
+            jointProb,'un',0);
+        jointEntropy = cellfun(@(x) arrayfun(@(y) -sum(x(x(:,y)>0,y).*log(x(x(:,y)>0,y))),...
+            1:size(x,2)),jointProb,'un',0);
+        SumPairEntropy = arrayfun(@(x) arrayfun(@(y) sum([Entropy(x) Entropy(y)]),setdiff(x:8,x)), ...
+            1:length(Entropy),'un',0);
+        MI = cell2mat(cellfun(@(x,y) arrayfun(@(z) x(z) - y(z),1:length(x)), SumPairEntropy, jointEntropy,'un',0));
+        
+        
+        
+        Feature = [Entropy RelEntropy cell2mat(jointEntropy) MI];
+        %%   
+    case 13 % Angle between the two channels (not a feature for entire signal, should be computed over short windows)
+        Feature = cell2mat(arrayfun(@(x) arrayfun(@(y) ...
+            180/pi*acos(dot(RMS(:,x),RMS(:,y))/(norm(RMS(:,x))*norm(RMS(:,y)))), ...
+            setdiff(x:8,x)),1:size(RMS,2),'un',0));
+
+   %%
+    case 14 % frequency features
+        
+              %% Frequency domain feature computed for the raw data  and not RMS curves 
+        %peak and centroid frequencies and bandwidth
+zeroPad =100;
+
+% apply hamming window and compute fft over moving windows 
+Data = arrayfun(@(x) [zeros(zeroPad,size(Signal,2)); ...
+                    repmat(hamming(diff(IndexWindow(:,x))+1),1,size(Signal,2)).*zscore(Signal(IndexWindow(1,x):IndexWindow(2,x),:)); ...
+                        zeros(zeroPad,size(Signal,2))], 1:length(IndexWindow),'un',0);
+
+
+psd = cellfun(@(x) (fft(x))/size(x,1),Data,'un',0); % normalize to length of window
+psd(cellfun(@isempty, psd)) = []; psd(end) = [];
+% power spectral density
+PSD = mean(abs(cat(3,psd{:})).^2,3);
+PSD = PSD(1:floor(size(PSD)/2)+1,:);
+F =  round(Fs/2)*linspace(0,1,length(PSD));
+ PSD = 10*log10(PSD); % log scale
+ PSD = PSD - repmat(min(PSD),length(PSD),1) + eps; 
+
+
+
+[~, maxFreq_inx] = max(PSD);
+PeakFreq = F(maxFreq_inx);
+
+
+centriodFreq = sum(repmat(F',1,size(PSD,2)).*PSD)./sum(PSD);
+bandWidth = arrayfun(@(x) sum((F'-centriodFreq(x)).^2.*PSD(:,x))./sum(PSD(:,x)),...
+                1:length(centriodFreq));
+RelativePowPeakFrequency = PSD(maxFreq_inx) ./ sum(PSD);
+
+%% the following computes the width of the max peak of the channels 
+Index = arrayfun(@(y) find(PSD(:,y) < .25*max(PSD(:,y))),1:size(PSD,2),'un', 0);
+
+        [~ ,InxMax]=  max(PSD);
+        [SortIndx] = arrayfun(@(y) find((Index{y} - InxMax(y))>0),1:length(Index),'un', 0);
+        %fix for the cases where the peak is at the end of the interval and
+        %and the right tail of it doesnt cross zero is cut. in such cases,  the right
+        %tail zero crossing is set to the length of the swallow.
+        for i = 1:length(SortIndx)
+                if isempty(SortIndx{i})
+                    Index{i}(end+1) = length(PSD);
+                        if InxMax(i) == length(PSD);                            
+                    SortIndx{i} = length(Index{i}); 
+                        else
+                    SortIndx{i} = find((Index{i} - InxMax(i))>0);
+                        end
+                end
+            
+                if SortIndx{i}(1)  == 1
+                    Index{i} =[1 ;Index{i}];
+                    SortIndx{i}(1) = 2;
+                end
+        end
+        
+   
+        WidthPeak =  arrayfun(@(y) diff(Index{y}(SortIndx{y}(1)-1:SortIndx{y}(1))),1:length(Index));
+     
+        
+Feature = [PeakFreq  centriodFreq  ...
+            bandWidth  RelativePowPeakFrequency ...
+            WidthPeak ];
+
+
+end
+
+
