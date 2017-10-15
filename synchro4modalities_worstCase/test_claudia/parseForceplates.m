@@ -7,6 +7,12 @@ function [FP1, FP2] = parseForceplates(fileANC, Offset)
 %
 % Author: Jonathan Lin
 
+    if ~exist('fileANC', 'var')
+        % sample code
+        fileANC = '..\data_fp\amtitest1.anc';
+        Offset = '';
+    end
+
 FP1.label = '0541';
 FP2.label = '0561';
 

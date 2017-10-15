@@ -1,0 +1,119 @@
+clc;
+clear;
+close all;
+
+addpath(genpath('xml_io_tools'));
+addpath(genpath('mocap_tools'));
+
+%% settings
+filepath_base  = 'D:/aslab/data/Fullbody_IIT_2017/';
+filepath_subject{1} = 'Pilot00/';
+filepath_subject{2} = 'Subject01/';
+filepath_subject{3} = 'Subject02/';
+filepath_subject{4} = 'Subject03/';
+filepath_subject{5} = 'Subject04/';
+filepath_unloadefp = 'unloaded_fp1.anc';
+
+filepath_index = [filepath_base '/' filepath_subject '/filelist.csv'];
+
+%% load filelist and iterate
+scanStr = '%s%s%s%s%s%s%s';
+fid = fopen(filepath_index);
+filelist = textscan(fid,scanStr,'HeaderLines',1,'Delimiter',',');
+fclose(fid);
+
+for ind_subjects = 1:size(filepath_subject)
+for ind_files = 1:size(filelist{1})
+    filepath_output_mvn          = [filepath_output '_mvn.mat'];
+    filepath_output_sandalsLeft  = [filepath_output '_sandalsLeft.mat'];
+    filepath_output_sandalsRight = [filepath_output '_sandalsLeft.mat'];
+    filepath_output_mocap        = [filepath_output '_mocap.mat'];
+    filepath_output_fp           = [filepath_output '_fp.mat'];
+    
+    filepath_output_fig       = [filepath_output '.fig'];
+    filepath_output_png       = [filepath_output '.png'];
+    
+        %% extracting data and aligning
+    % --------- xsens ---------
+    % read 
+    if exist(filepath_output_mvn, 'file')
+        mvn_raw = load(filepath_output_mvn);
+        
+        % calibrate and save
+        mvnTime = [];
+        mvnPos = [];
+        for ind_data = 4:length(data_raw.mvn.subject.frames.frame)
+            currTime = (data_raw.mvn.subject.frames.frame(ind_data).ATTRIBUTE.ms / 1000) - startTime;
+            currPos = data_raw.mvn.subject.frames.frame(ind_data).position;
+            mvnTime = [mvnTime; currTime];
+            mvnPos =  [mvnPos;  currPos];
+        end
+        
+        mvn_calib.time = mvnTime;
+        mvn_calib.data = mvnPos;
+    else
+        mvn_calib = [];
+    end
+    
+    % --------- left sandal ---------
+    % read
+    if exist(filepath_output_sandalsLeft, 'file')
+        sandalsLeft_raw = load(filepath_output_sandalsLeft);
+        
+        % --------- right sandal ---------
+        % read
+        sandalsRight_raw = load(filepath_output_sandalsRight);
+    else
+        sandalsRight_calib = [];
+        sandalsLeft_calib = [];
+    end
+    
+    % --------- mocap ---------
+    % read
+    if exist(filepath_output_mocap, 'file')
+        mocap_raw = load(filepath_output_mocap);
+           else
+ mocap_calib.time = data_raw.mocap.data.Time;
+    mocap_calib.data = data_raw.mocap.data;
+    end
+    
+    % --------- forceplates ---------
+    if exist(filepath_output_fp, 'file')
+        % read
+        fp_raw = load(filepath_output_fp);
+    else
+        fp_raw = [];
+    end
+    
+    %% plotting data
+    h0 = figure;
+    h1 = subplot(221);
+    plot(data_calib.mvn.time, data_calib.mvn.position, '.');
+    title('mvn');
+
+    h2 = subplot(222);
+    plot(data_calib.sandals_right.time, data_calib.sandals_right.data, '.'); hold on
+    plot(data_calib.sandals_left.time,  data_calib.sandals_left.data, '.');
+    title('sandal right+left');
+
+    h3 = subplot(223);
+    plot(data_calib.mocap.time, data_calib.mocap.data.EL_LAT, '.');
+    title('mocap');
+
+    h4 = subplot(224);
+    plot(data_calib.fp.time, data_calib.fp.F1, '.');
+    title('fp [N]');
+    linkaxes([h1 h2 h3 h4], 'x');
+    
+    %% save all the contents
+    [pathstr,name,ext] = fileparts(filepath_mat_output);
+    
+    if ~exist(pathstr, 'dir')
+        mkdir(pathstr)
+    end
+
+    save(filepath_output_calibmat, 'data_calib');
+    saveas(h0, filepath_output_fig);
+end
+end
+
