@@ -14,10 +14,20 @@ function fp = loadFp_calibrate(filepath_data, filepath_offset)
     end
     
     % loading the test data
-    [cortex_time, cortex_f1_adc, cortex_f2_adc] = loadFPDataCortex(filepath_data);
+    if exist(filepath_data, 'file')
+        [cortex_time, cortex_f1_adc, cortex_f2_adc] = loadFPDataCortex(filepath_data);
+    else
+        % if it doesn't exist...return nulls
+        fp.time = [];
+        fp.F1 = [];
+        fp.F2 = [];
+        fp.M1 = [];
+        fp.M2 = [];
+        return
+    end
     
     % loading unloaded fp data if exist
-    if exist(filepath_offset, 'var') && exist(filepath_offset, 'file')
+    if exist(filepath_offset, 'file')
           [cortex_time_offset, cortex_f1_adc_offset, cortex_f2_adc_offset] = loadFPDataCortex(filepath_offset);
     else
           cortex_time_offset = [];
