@@ -2,10 +2,9 @@ clc;
 clear;
 close all;
 
-addpath(genpath('xml_io_tools'));
-addpath(genpath('mocap_tools'));
-
 %% settings
+plotFigsFlag = 0;
+
 filepath_dataroot  = 'D:/aslab/data/Fullbody_IIT_2017/';
 filepath_filemapping = 'D:/aslab/data/Fullbody_IIT_2017/databaseSpec.csv';
 filepath_plots = 'D:/aslab/data/Fullbody_IIT_2017/plots/'; 
@@ -19,6 +18,9 @@ filepath_unloadefp = 'unloaded_fp1.anc';
 if ~exist(filepath_plots, 'dir')
     mkdir(filepath_plots)
 end
+
+addpath(genpath('xml_io_tools'));
+addpath(genpath('mocap_tools'));
 
 %% load filelist
 [numData,textData,rawData] = xlsread(filepath_filemapping);
@@ -96,8 +98,22 @@ for ind_fileset = 1:length(totalFileSet)
     checkPathWriteToConsole(currFileSet.filepath_mocap, currFileSet);
     checkPathWriteToConsole(currFileSet.filepath_fp, currFileSet);
     checkPathWriteToConsole(currFileSet.filepath_fpUnloaded, currFileSet);
+    
+    if ~isempty(currFileSet.filepath_xsens) && exist(currFileSet.filepath_xsens, 'file')
+        fid = fopen(currFileSet.filepath_xsens);
+        mvnDataRow = textscan(fid, '%[^\n]', 1, 'HeaderLines', mvnTimestampRow-1);
+        if isempty(mvnDataRow{1})
+            fprintf('File empty: %s (%s)\n', currFileSet.filepath_xsens, currFileSet.exercise);
+        end
+        fclose(fid);
+    else
+        startTime = 0; % to ms
+    end
 end
 
+if ~plotFigsFlag
+    return
+end
  
 for ind_fileset = 1:length(totalFileSet)
     currFileSet = totalFileSet(ind_fileset);
