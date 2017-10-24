@@ -10,7 +10,7 @@ filepath_dataroot  = 'D:/aslab/data/Fullbody_IIT_2017/';
 filepath_filemapping = 'D:/aslab/data/Fullbody_IIT_2017/databaseSpec.csv';
 filepath_plots = 'D:/aslab/data/Fullbody_IIT_2017/plots/'; 
 
-totalSubj = 2:11;
+totalSubj = 1:11;
 totalExercise = 1:11;
 mvnTimestampRow = 597;
 filepath_unloadefp = 'unloaded_fp1.anc';
@@ -110,39 +110,48 @@ for ind_fileset = 1:length(totalFileSet)
     filepath_san_right  = currFileSet.filepath_shoes_right;
     
     filepath_output     = currFileSet.filepath_output;
-    filepath_output_fig       = [filepath_output '.png'];
+    filepath_output_png       = [filepath_output '.png'];
+    filepath_output_fig       = [filepath_output '.fig'];
     
     %% extracting data and aligning
     % --------- xsens timestamp ---------
     % read
-    fid = fopen(filepath_mvn);
-    mvnDataRow = textscan(fid, '%[^\n]', 1, 'HeaderLines', mvnTimestampRow-1);
-    mvnDataSplit = strsplit(mvnDataRow{1}{1});
-    startTime = str2num(mvnDataSplit{5}(5:end-1)) / 1000; % to ms
-    fclose(fid);
-
+    if ~isempty(filepath_mvn) && exist(filepath_mvn, 'file')
+        fid = fopen(filepath_mvn);
+        mvnDataRow = textscan(fid, '%[^\n]', 1, 'HeaderLines', mvnTimestampRow-1);
+        if ~isempty(mvnDataRow{1})
+            mvnDataSplit = strsplit(mvnDataRow{1}{1});
+            startTime = str2num(mvnDataSplit{5}(5:end-1)) / 1000; % to ms
+        else
+            startTime = 0;
+        end
+        fclose(fid);
+    else
+        startTime = 0; % to ms
+    end
+    
     % --------- left sandal ---------
     % read
     if ~isempty(filepath_san_left)
-    data_raw.sandals_left = dlmread(filepath_san_left , ' ');
-    
-    % time alignment
-    data_raw.sandals_left(:, 2) = data_raw.sandals_left(:, 2) - startTime;
-    
-    % calibrate and save
-    data_calib.sandals_left.time = data_raw.sandals_left(:, 2);
-    data_calib.sandals_left.data = data_raw.sandals_left(:, 3:end);
-    
-    % --------- right sandal ---------
-    % read
-    data_raw.sandals_right = dlmread(filepath_san_right , ' ');
-    
-    % time alignment
-    data_raw.sandals_right(:, 2) = data_raw.sandals_right(:, 2) - startTime;
-    
-    % calibrate and save
-    data_calib.sandals_right.time = data_raw.sandals_right(:, 2);
-    data_calib.sandals_right.data = data_raw.sandals_right(:, 3:end);
+        data_raw.sandals_left = dlmread(filepath_san_left , ' ');
+        
+        % time alignment
+        data_raw.sandals_left(:, 2) = data_raw.sandals_left(:, 2) - startTime;
+        
+        % calibrate and save
+        data_calib.sandals_left.time = data_raw.sandals_left(:, 2);
+        data_calib.sandals_left.data = data_raw.sandals_left(:, 3:end);
+        
+        % --------- right sandal ---------
+        % read
+        data_raw.sandals_right = dlmread(filepath_san_right , ' ');
+        
+        % time alignment
+        data_raw.sandals_right(:, 2) = data_raw.sandals_right(:, 2) - startTime;
+        
+        % calibrate and save
+        data_calib.sandals_right.time = data_raw.sandals_right(:, 2);
+        data_calib.sandals_right.data = data_raw.sandals_right(:, 3:end);
     else
         data_calib.sandals_left.time = [];
         data_calib.sandals_left.data = [];
@@ -152,18 +161,29 @@ for ind_fileset = 1:length(totalFileSet)
     
     % --------- mocap ---------
     % read
-    data_raw.mocap = readTrc(filepath_mocap);
-    
-    % calibrate and save
-    data_calib.mocap.time = data_raw.mocap.data.Time;
-    data_calib.mocap.data = data_raw.mocap.data;
+    if ~isempty(filepath_mocap)
+        data_raw.mocap = readTrc(filepath_mocap);
+        
+        % calibrate and save
+        data_calib.mocap.time = data_raw.mocap.data.Time;
+        data_calib.mocap.data = data_raw.mocap.data;
+    else
+        data_calib.mocap.time = [];
+        data_calib.mocap.data = [];
+    end
     
     % --------- forceplates ---------
     % read
+    if ~isempty(filepath_fp)
     fp = loadFp_calibrate(filepath_fp, filepath_fpUnloaded);
     
     % calibrate and save
     data_calib.fp = fp;
+    else
+       data_calib.fp.time = [];
+       data_calib.fp.F1 = [];
+       data_calib.fp.F2 = [];
+    end
     
     %% plotting data
     h0 = figure('Position', [1.9378e+03 166.6000 1.8536e+03 916.8000]);
@@ -176,16 +196,17 @@ for ind_fileset = 1:length(totalFileSet)
     title(['sandal left (' currFileSet.exercise ')']);
     
     h3 = subplot(224);
-    plot(data_calib.fp.time, data_calib.fp.F1, '.');
+    plot(data_calib.fp.time, -1*data_calib.fp.F1, '.');
     title('fp left');
     
     h4 = subplot(223);
-    plot(data_calib.fp.time, data_calib.fp.F2, '.');
+    plot(data_calib.fp.time, -1*data_calib.fp.F2, '.');
     title('fp right');
     
     linkaxes([h1 h2 h3 h4], 'x');
     
     %% save all the contents
+    saveas(h0, filepath_output_png);
     saveas(h0, filepath_output_fig);
     
     close(h0);
